@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { ProgressBar } from '../ui/ProgressBar';
 import { VideoSettings, VideoStatus } from '../../types';
+import { api } from '../../config/api';
 
 interface GeneratePageProps {
   onNavigate: (page: string) => void;
@@ -58,30 +59,24 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ onNavigate }) => {
     setGenerationError(null);
     
     try {
-      const response = await fetch('/api/generate-content', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: aiPrompt,
-          videoType,
-          duration: targetDuration,
-          tone
-        }),
+      const data = await api.generateContent({
+        prompt: aiPrompt,
+        videoType,
+        duration: targetDuration,
+        tone
       });
-
-      const data = await response.json();
 
       if (data.success) {
         setGeneratedScript(data.script);
         setContent(data.script);
         setContentMode('manual');
+        console.log('✅ Script généré:', data.metadata);
       } else {
         setGenerationError(data.error || 'Erreur lors de la génération');
       }
     } catch (error) {
-      setGenerationError('Erreur de connexion');
+      console.error('❌ Erreur:', error);
+      setGenerationError('Erreur de connexion au serveur');
     } finally {
       setIsGeneratingScript(false);
     }
@@ -94,23 +89,40 @@ export const GeneratePage: React.FC<GeneratePageProps> = ({ onNavigate }) => {
     setIsGenerating(true);
     setProgress(0);
     
-    // Simulate generation process
-    for (let i = 0; i < steps.length; i++) {
-      setCurrentStep(steps[i].id as VideoStatus);
-      
-      // Simulate step progress
-      for (let p = 0; p <= 100; p += 10) {
-        setProgress((i / steps.length) * 100 + (p / steps.length));
-        await new Promise(resolve => setTimeout(resolve, 200));
+    try {
+      // Appel API pour démarrer la génération
+      const response = await api.generateVideo({
+        script: currentContent,
+        settings
+      });
+
+      if (response.success) {
+        console.log('🎬 Génération vidéo démarrée:', response.jobId);
+        
+        // Simulate generation process
+        for (let i = 0; i < steps.length; i++) {
+          setCurrentStep(steps[i].id as VideoStatus);
+          
+          // Simulate step progress
+          for (let p = 0; p <= 100; p += 10) {
+            setProgress((i / steps.length) * 100 + (p / steps.length));
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
+        
+        setCurrentStep('ready');
+        setProgress(100);
+        setTimeout(() => {
+          setIsGenerating(false);
+          // Navigate to result or show success
+          onNavigate('library');
+        }, 1000);
       }
-    }
-    
-    setCurrentStep('ready');
-    setProgress(100);
-    setTimeout(() => {
+    } catch (error) {
+      console.error('❌ Erreur génération vidéo:', error);
+      setGenerationError('Erreur lors de la génération vidéo');
       setIsGenerating(false);
-      // Navigate to result or show success
-    }, 1000);
+    }
   };
 
   const currentStepIndex = steps.findIndex(step => step.id === currentStep);
